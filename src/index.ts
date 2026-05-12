@@ -1,13 +1,21 @@
 #!/usr/bin/env node
+import express from "express";
+import cors from "cors";
+import { createServer as createHttpsServer } from "https";
+import { randomUUID } from "crypto";
+import { AsyncLocalStorage } from "async_hooks";
+import { getTlsOptions } from "./tls.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { TeamViewerClient } from "./client.js";
-import { loadTokens, saveTokens, isExpired } from "./token-store.js";
+import { TeamViewerOAuthProvider } from "./auth-provider.js";
 
 import { accountTools, handleAccountTool } from "./tools/account.js";
 import { companyTools, handleCompanyTool } from "./tools/company.js";
@@ -23,9 +31,30 @@ import { reportTools, handleReportTool } from "./tools/reports.js";
 import { sessionTools, handleSessionTool } from "./tools/sessions.js";
 import { userTools, handleUserTool } from "./tools/users.js";
 import { userRoleTools, handleUserRoleTool } from "./tools/user-roles.js";
-import { oauthTools, handleOAuthTool } from "./tools/oauth.js";
+import { permanentTokenTools, handlePermanentTokenTool } from "./tools/permanent-token.js";
 import { remoteControlTools, handleRemoteControlTool } from "./tools/remote-control.js";
 
+// ---------------------------------------------------------------------------
+// Token context — carries the TV access token through async call chains so
+// that tool handlers can call getClient() without explicit token passing.
+// ---------------------------------------------------------------------------
+const tokenContext = new AsyncLocalStorage<string>();
+
+export function getClient(): TeamViewerClient {
+  const envToken = process.env.TEAMVIEWER_API_TOKEN;
+  if (envToken) return new TeamViewerClient(envToken);
+
+  const token = tokenContext.getStore();
+  if (token) return new TeamViewerClient(token);
+
+  throw new Error(
+    "Not authenticated. Connect via OAuth or set the TEAMVIEWER_API_TOKEN environment variable."
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tool registry
+// ---------------------------------------------------------------------------
 const ALL_TOOLS = [
   ...accountTools,
   ...companyTools,
@@ -41,7 +70,7 @@ const ALL_TOOLS = [
   ...sessionTools,
   ...userTools,
   ...userRoleTools,
-  ...oauthTools,
+  ...permanentTokenTools,
   ...remoteControlTools,
 ];
 
@@ -63,96 +92,312 @@ const TOOL_HANDLERS: Record<
   ...Object.fromEntries(sessionTools.map((t) => [t.name, handleSessionTool])),
   ...Object.fromEntries(userTools.map((t) => [t.name, handleUserTool])),
   ...Object.fromEntries(userRoleTools.map((t) => [t.name, handleUserRoleTool])),
+  ...Object.fromEntries(permanentTokenTools.map((t) => [t.name, handlePermanentTokenTool])),
 };
 
-function getClient(): TeamViewerClient {
-  // 1. Prefer env var (static token / permanent token)
-  const envToken = process.env.TEAMVIEWER_API_TOKEN;
-  if (envToken) return new TeamViewerClient(envToken);
+// ---------------------------------------------------------------------------
+// MCP Server factory — one instance per HTTP session
+// ---------------------------------------------------------------------------
+function createMcpServer(): Server {
+  const server = new Server(
+    { name: "teamviewer-mcp", version: "1.0.0" },
+    { capabilities: { tools: {} } }
+  );
 
-  // 2. Fall back to stored OAuth token
-  const stored = loadTokens();
-  if (!stored?.access_token) {
-    throw new Error(
-      "Not authenticated. Call tv_oauth_get_auth_url to start the OAuth flow, " +
-        "or set the TEAMVIEWER_API_TOKEN environment variable."
-    );
-  }
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: ALL_TOOLS }));
 
-  // Warn if expired and no refresh token available
-  if (isExpired(stored) && !stored.refresh_token) {
-    throw new Error("Stored access token has expired and no refresh token is available. Re-authenticate with tv_oauth_get_auth_url.");
-  }
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args = {} } = request.params;
+    const typedArgs = args as Record<string, unknown>;
 
-  return new TeamViewerClient(stored.access_token);
-}
+    if (name === "tv_connect_device") {
+      try {
+        const result = await handleRemoteControlTool(name, typedArgs);
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
 
-const server = new Server(
-  { name: "teamviewer-mcp", version: "1.0.0" },
-  { capabilities: { tools: {} } }
-);
+    const handler = TOOL_HANDLERS[name];
+    if (!handler) {
+      return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
+    }
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: ALL_TOOLS,
-}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args = {} } = request.params;
-
-  const typedArgs = args as Record<string, unknown>;
-
-  // Remote control — opens a local URL, no API client needed
-  if (name === "tv_connect_device") {
     try {
-      const result = await handleRemoteControlTool(name, typedArgs);
+      const client = getClient();
+      const result = await handler(name, typedArgs, client);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
     }
-  }
+  });
 
-  // OAuth tools manage their own auth state — no client needed
-  if (name.startsWith("tv_oauth_")) {
-    try {
-      const result = await handleOAuthTool(name, typedArgs);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-    }
-  }
-
-  const handler = TOOL_HANDLERS[name];
-  if (!handler) {
-    return {
-      content: [{ type: "text", text: `Unknown tool: ${name}` }],
-      isError: true,
-    };
-  }
-
-  try {
-    const client = getClient();
-    const result = await handler(name, typedArgs, client);
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      content: [{ type: "text", text: `Error: ${message}` }],
-      isError: true,
-    };
-  }
-});
-
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("TeamViewer MCP server running on stdio");
+  return server;
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+// ---------------------------------------------------------------------------
+// HTTP server setup
+// ---------------------------------------------------------------------------
+const PORT = parseInt(process.env.PORT ?? "3000", 10);
+const serverUrl = new URL(process.env.TEAMVIEWER_MCP_URL ?? `https://localhost:${PORT}`);
+
+// createMcpExpressApp adds host-header protection for localhost bindings
+const app = createMcpExpressApp({ host: "0.0.0.0" });
+app.set("trust proxy", 1); // trust X-Forwarded-For from ngrok/reverse proxy
+app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// OAuth — only mounted when TV OAuth credentials are configured.
+// When present, mcpAuthRouter automatically creates:
+//   GET /.well-known/oauth-protected-resource  (RFC 9728 — required for Anthropic connectors)
+//   GET /.well-known/oauth-authorization-server (RFC 8414)
+//   GET  /authorize
+//   POST /token
+//   POST /revoke
+// Dynamic client registration (/register) is intentionally omitted.
+// Pre-authorize MCP client IDs via TEAMVIEWER_ALLOWED_CLIENT_IDS (comma-separated).
+// If unset, any client_id is accepted.
+// ---------------------------------------------------------------------------
+const mcpResourceUrl = new URL("/mcp", serverUrl);
+const tvClientId = process.env.TEAMVIEWER_CLIENT_ID ?? "842712-P7STnCzemJlOTChLFPgu";
+const tvClientSecret = process.env.TEAMVIEWER_CLIENT_SECRET ?? "CqPi9dzeGoLfrMSh61La";
+const tvCallbackUrl = process.env.TEAMVIEWER_CALLBACK_URL;
+let provider: TeamViewerOAuthProvider | undefined;
+
+if (tvClientId && tvClientSecret) {
+  provider = new TeamViewerOAuthProvider(tvClientId, tvClientSecret, serverUrl, tvCallbackUrl);
+
+  app.use(
+    mcpAuthRouter({
+      provider,
+      issuerUrl: serverUrl,
+      resourceServerUrl: mcpResourceUrl,
+      scopesSupported: [
+        "UserInfo.View",
+        "Computers.View",
+        "Computers.Edit",
+        "Computers.Delete",
+        "Groups.View",
+        "Groups.Create",
+        "Groups.Edit",
+        "Groups.Delete",
+        "Contacts.View",
+        "Contacts.Create",
+        "Contacts.Edit",
+        "Contacts.Delete",
+        "Partners.View",
+        "Sessions.ManualCreation",
+      ],
+      resourceName: "TeamViewer MCP Server",
+    })
+  );
+
+  // TeamViewer redirects the user here after they authorize in their browser.
+  // We exchange the TV code for TV tokens and redirect the user back to Claude.
+  app.get("/callback", async (req: express.Request, res: express.Response) => {
+    const { code, state, error, error_description } =
+      req.query as Record<string, string | undefined>;
+
+    if (error) {
+      res.status(400).send(errorHtml(`Authorization failed: ${error} — ${error_description ?? ""}`));
+      return;
+    }
+
+    if (!code || !state) {
+      res.status(400).send(errorHtml("Missing code or state in callback URL"));
+      return;
+    }
+
+    try {
+      const redirectUrl = await provider!.handleCallback(code, state);
+      res.redirect(redirectUrl);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[teamviewer-mcp] OAuth callback error:", msg);
+      res.status(400).send(errorHtml(msg));
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// MCP transport — one StreamableHTTPServerTransport per client session
+// ---------------------------------------------------------------------------
+const transports = new Map<string, StreamableHTTPServerTransport>();
+
+async function handleMcpRequest(req: express.Request, res: express.Response): Promise<void> {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+  // The bearer token is the TV access token, added by requireBearerAuth middleware.
+  // Fall back to the static env var token for local development without OAuth.
+  const authToken = (req as express.Request & { auth?: { token: string } }).auth?.token;
+  const activeToken = authToken ?? process.env.TEAMVIEWER_API_TOKEN ?? "";
+
+  // SSE stream reconnect
+  if (req.method === "GET") {
+    const transport = sessionId ? transports.get(sessionId) : undefined;
+    if (!transport) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    await tokenContext.run(activeToken, () => transport.handleRequest(req, res));
+    return;
+  }
+
+  // Session teardown
+  if (req.method === "DELETE") {
+    if (sessionId) {
+      const transport = transports.get(sessionId);
+      if (transport) {
+        await transport.close();
+        transports.delete(sessionId);
+      }
+    }
+    res.status(200).end();
+    return;
+  }
+
+  // New or existing POST — resume session or create a new transport
+  let transport = sessionId ? transports.get(sessionId) : undefined;
+
+  if (!transport) {
+    const newTransport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) => {
+        transports.set(id, newTransport);
+      },
+    });
+
+    newTransport.onclose = () => {
+      if (newTransport.sessionId) transports.delete(newTransport.sessionId);
+    };
+
+    const server = createMcpServer();
+    await server.connect(newTransport);
+    transport = newTransport;
+  }
+
+  await tokenContext.run(activeToken, () =>
+    transport!.handleRequest(req, res, req.body)
+  );
+}
+
+// Bearer auth guard — applied when OAuth is configured.
+// initialize is exempt so Claude can verify reachability before OAuth completes.
+const mcpCors = cors({ origin: "*", allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id"] });
+
+// Normalize Accept header before the SDK sees it. The SDK checks literally for
+// "application/json" and "text/event-stream"; wildcard "*/*" triggers a 406.
+// @hono/node-server converts rawHeaders (not req.headers) to a web Request, so
+// we must patch rawHeaders directly.
+const normalizeAccept: express.RequestHandler = (req, _res, next) => {
+  const raw = req.rawHeaders;
+  const idx = raw.findIndex((v, i) => i % 2 === 0 && v.toLowerCase() === "accept");
+  const current = idx !== -1 ? raw[idx + 1] : "";
+  const needed = "application/json, text/event-stream";
+  if (!current.includes("application/json") || !current.includes("text/event-stream")) {
+    if (idx !== -1) {
+      raw[idx + 1] = needed;
+    } else {
+      raw.push("accept", needed);
+    }
+    req.headers["accept"] = needed;
+  }
+  next();
+};
+
+const mcpMiddleware: express.RequestHandler[] = [mcpCors, normalizeAccept];
+if (provider) {
+  const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(mcpResourceUrl);
+
+  // RFC 6750 §3.1 compliant bearer auth:
+  // - No Authorization header → 401 with NO error field (signals "please authenticate")
+  // - Invalid/expired token   → 401 with error="invalid_token"
+  // initialize and notifications/initialized are exempt so the MCP handshake completes
+  // before OAuth, letting Claude discover the server is reachable.
+  const customBearerAuth: express.RequestHandler = async (req, res, next) => {
+    const method = (req.body as Record<string, unknown>)?.method;
+    const unauthenticatedMethods = new Set(["initialize", "notifications/initialized", "tools/list"]);
+    if (req.method === "POST" && unauthenticatedMethods.has(method as string)) {
+      return next();
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      res.status(401)
+        .set("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl}"`)
+        .json({ error: "authentication_required", error_description: "Bearer token required" });
+      return;
+    }
+    if (!authHeader.startsWith("Bearer ")) {
+      res.status(401)
+        .set("WWW-Authenticate", `Bearer error="invalid_token", resource_metadata="${resourceMetadataUrl}"`)
+        .json({ error: "invalid_token", error_description: "Invalid authorization scheme" });
+      return;
+    }
+    const token = authHeader.slice(7);
+    try {
+      const authInfo = await provider!.verifyAccessToken(token);
+      (req as express.Request & { auth?: typeof authInfo }).auth = authInfo;
+      next();
+    } catch {
+      res.status(401)
+        .set("WWW-Authenticate", `Bearer error="invalid_token", resource_metadata="${resourceMetadataUrl}"`)
+        .json({ error: "invalid_token", error_description: "Invalid or expired access token" });
+    }
+  };
+
+  mcpMiddleware.push(customBearerAuth);
+} else if (!process.env.TEAMVIEWER_API_TOKEN) {
+  console.warn(
+    "[teamviewer-mcp] WARNING: No authentication configured. " +
+      "Set TEAMVIEWER_CLIENT_ID + TEAMVIEWER_CLIENT_SECRET (OAuth) " +
+      "or TEAMVIEWER_API_TOKEN (static token)."
+  );
+}
+
+app.all("/mcp", ...mcpMiddleware, handleMcpRequest as express.RequestHandler);
+app.all("/", ...mcpMiddleware, handleMcpRequest as express.RequestHandler);
+
+// ---------------------------------------------------------------------------
+// Start.
+// Set USE_HTTPS=false to listen on plain HTTP — use this when TLS is
+// terminated upstream by a reverse proxy or tunnel (ngrok, Cloudflare, etc.).
+// Otherwise the built-in self-signed cert is used for direct HTTPS.
+// For production TLS set HTTPS_KEY_FILE and HTTPS_CERT_FILE to your PEM paths.
+// ---------------------------------------------------------------------------
+const useHttps = process.env.USE_HTTPS !== "false";
+
+function startServer(): void {
+  const base = serverUrl.href.replace(/\/$/, "");
+  const onListen = () => {
+    console.error(`[teamviewer-mcp] Listening on port ${PORT} (${useHttps ? "HTTPS" : "HTTP"})`);
+    console.error(`[teamviewer-mcp] MCP endpoint : ${base}/mcp`);
+    if (provider) {
+      const callbackDisplayUrl = tvCallbackUrl ?? `${base}/callback`;
+      console.error(`[teamviewer-mcp] Protected resource metadata : ${base}/.well-known/oauth-protected-resource`);
+      console.error(`[teamviewer-mcp] Authorization server metadata: ${base}/.well-known/oauth-authorization-server`);
+      console.error(`[teamviewer-mcp] OAuth callback (register with TeamViewer): ${callbackDisplayUrl}`);
+    }
+  };
+
+  if (useHttps) {
+    createHttpsServer(getTlsOptions(), app).listen(PORT, "0.0.0.0", onListen);
+  } else {
+    app.listen(PORT, "0.0.0.0", onListen);
+  }
+}
+
+startServer();
+
+function errorHtml(message: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Authorization Error — TeamViewer MCP</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f5f5f5}
+.card{background:#fff;border-radius:8px;padding:40px 48px;box-shadow:0 2px 12px rgba(0,0,0,.1);max-width:480px;text-align:center}
+h1{color:#c0392b}p{color:#555}</style></head>
+<body><div class="card"><h1>Authorization Error</h1><p>${message}</p></div></body></html>`;
+}

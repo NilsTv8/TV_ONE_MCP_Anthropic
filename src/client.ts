@@ -80,4 +80,12 @@ export class TeamViewerClient {
   delete<T>(path: string, body?: unknown, query?: Record<string, string | number | boolean | undefined>): Promise<T> {
     return this.request<T>("DELETE", path, body, query);
   }
+
+  createPermanentToken(name: string, scope?: string): Promise<{ AccessToken: string }> {
+    return this.post<{ AccessToken: string }>("/OAuth2/accessToken", { name, scope });
+  }
+
+  deletePermanentToken(): Promise<void> {
+    return this.delete<void>("/OAuth2/accessToken");
+  }
 }
