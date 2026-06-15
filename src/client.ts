@@ -14,7 +14,8 @@ export class TeamViewerClient {
     method: string,
     path: string,
     body?: unknown,
-    query?: Record<string, string | number | boolean | undefined>
+    query?: Record<string, string | number | boolean | undefined>,
+    retries = 1
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
 
@@ -37,9 +38,9 @@ export class TeamViewerClient {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
 
-    if (response.status === 401 && this.refreshFn) {
+    if (response.status === 401 && this.refreshFn && retries > 0) {
       this.token = await this.refreshFn();
-      return this.request<T>(method, path, body, query);
+      return this.request<T>(method, path, body, query, retries - 1);
     }
 
     if (!response.ok) {

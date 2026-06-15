@@ -1,8 +1,8 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export const remoteControlTools: Tool[] = [
   {
@@ -41,12 +41,13 @@ export async function handleRemoteControlTool(
   const tvId = teamviewer_id.replace(/\s/g, "");
   const url = `teamviewerapi://remotecontrol/?remotecontrolid=${tvId}&thirdpartyname=tv_claude`;
 
-  const openCmd =
-    process.platform === "win32" ? `start "" "${url}"` :
-    process.platform === "darwin" ? `open "${url}"` :
-    `xdg-open "${url}"`;
-
-  await execAsync(openCmd);
+  if (process.platform === "win32") {
+    await execFileAsync("cmd.exe", ["/c", "start", "", url]);
+  } else if (process.platform === "darwin") {
+    await execFileAsync("open", [url]);
+  } else {
+    await execFileAsync("xdg-open", [url]);
+  }
 
   return {
     message: `Remote control session initiated for device ${tvId}.`,

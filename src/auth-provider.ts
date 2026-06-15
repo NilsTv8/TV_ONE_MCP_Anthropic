@@ -41,6 +41,17 @@ interface TokenCacheEntry {
 
 const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 
+class BoundedMap<K, V> extends Map<K, V> {
+  constructor(private readonly maxSize: number) { super(); }
+  set(key: K, value: V): this {
+    if (!this.has(key) && this.size >= this.maxSize) {
+      const oldest = this.keys().next().value;
+      if (oldest !== undefined) this.delete(oldest);
+    }
+    return super.set(key, value);
+  }
+}
+
 /**
  * OAuth provider that proxies the authorization flow to TeamViewer.
  *
@@ -55,11 +66,11 @@ const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 export class TeamViewerOAuthProvider implements OAuthServerProvider {
   readonly skipLocalPkceValidation = true;
 
-  private readonly pendingAuths = new Map<string, PendingAuth>();
-  private readonly pendingCodes = new Map<string, PendingCode>();
-  private readonly tokenCache = new Map<string, TokenCacheEntry>();
-  private readonly tokenExpiry = new Map<string, number>();
-  private readonly registeredClients = new Map<string, OAuthClientInformationFull>();
+  private readonly pendingAuths = new BoundedMap<string, PendingAuth>(1000);
+  private readonly pendingCodes = new BoundedMap<string, PendingCode>(1000);
+  private readonly tokenCache = new BoundedMap<string, TokenCacheEntry>(10000);
+  private readonly tokenExpiry = new BoundedMap<string, number>(10000);
+  private readonly registeredClients = new BoundedMap<string, OAuthClientInformationFull>(10000);
 
   constructor(
     private readonly tvClientId: string,
@@ -162,7 +173,8 @@ export class TeamViewerOAuthProvider implements OAuthServerProvider {
 
     if (!resp.ok) {
       const errBody = await resp.text();
-      throw new InvalidGrantError(`TeamViewer token refresh failed: ${resp.status} — ${errBody}`);
+      console.error("[teamviewer-mcp] Token refresh failed:", resp.status, errBody);
+      throw new InvalidGrantError("Token refresh failed. Please re-authenticate.");
     }
 
     const token = await resp.json() as {
@@ -258,7 +270,8 @@ export class TeamViewerOAuthProvider implements OAuthServerProvider {
 
     if (!resp.ok) {
       const errBody = await resp.text();
-      throw new Error(`TeamViewer token exchange failed: ${resp.status} — ${errBody}`);
+      console.error("[teamviewer-mcp] Token exchange failed:", resp.status, errBody);
+      throw new Error("Authorization failed. Please try again.");
     }
 
     const token = await resp.json() as {

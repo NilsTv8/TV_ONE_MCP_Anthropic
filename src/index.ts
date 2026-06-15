@@ -146,7 +146,7 @@ const serverUrl = new URL(process.env.TEAMVIEWER_MCP_URL ?? `https://localhost:$
 
 // createMcpExpressApp adds host-header protection for localhost bindings
 const app = createMcpExpressApp({ host: "0.0.0.0" });
-app.set("trust proxy", 1); // trust X-Forwarded-For from ngrok/reverse proxy
+app.set("trust proxy", "loopback"); // ngrok agent connects from 127.0.0.1
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
@@ -162,8 +162,12 @@ app.use(express.json());
 // If unset, any client_id is accepted.
 // ---------------------------------------------------------------------------
 const mcpResourceUrl = new URL("/mcp", serverUrl);
-const tvClientId = process.env.TEAMVIEWER_CLIENT_ID ?? "842712-P7STnCzemJlOTChLFPgu";
-const tvClientSecret = process.env.TEAMVIEWER_CLIENT_SECRET ?? "CqPi9dzeGoLfrMSh61La";
+const tvClientId = process.env.TEAMVIEWER_CLIENT_ID;
+const tvClientSecret = process.env.TEAMVIEWER_CLIENT_SECRET;
+if (tvClientId && !tvClientSecret || !tvClientId && tvClientSecret) {
+  console.error("[teamviewer-mcp] FATAL: Both TEAMVIEWER_CLIENT_ID and TEAMVIEWER_CLIENT_SECRET must be set together.");
+  process.exit(1);
+}
 const tvCallbackUrl = process.env.TEAMVIEWER_CALLBACK_URL;
 let provider: TeamViewerOAuthProvider | undefined;
 
@@ -319,7 +323,7 @@ if (provider) {
   // before OAuth, letting Claude discover the server is reachable.
   const customBearerAuth: express.RequestHandler = async (req, res, next) => {
     const method = (req.body as Record<string, unknown>)?.method;
-    const unauthenticatedMethods = new Set(["initialize", "notifications/initialized", "tools/list"]);
+    const unauthenticatedMethods = new Set(["initialize", "notifications/initialized"]);
     if (req.method === "POST" && unauthenticatedMethods.has(method as string)) {
       return next();
     }
@@ -392,6 +396,11 @@ function startServer(): void {
 
 startServer();
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+}
+
 function errorHtml(message: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -399,5 +408,5 @@ function errorHtml(message: string): string {
 <style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f5f5f5}
 .card{background:#fff;border-radius:8px;padding:40px 48px;box-shadow:0 2px 12px rgba(0,0,0,.1);max-width:480px;text-align:center}
 h1{color:#c0392b}p{color:#555}</style></head>
-<body><div class="card"><h1>Authorization Error</h1><p>${message}</p></div></body></html>`;
+<body><div class="card"><h1>Authorization Error</h1><p>${escapeHtml(message)}</p></div></body></html>`;
 }
