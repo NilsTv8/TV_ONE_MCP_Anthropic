@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 import express from "express";
 import cors from "cors";
-import { createServer as createHttpsServer } from "https";
 import { randomUUID } from "crypto";
 import { AsyncLocalStorage } from "async_hooks";
-import { getTlsOptions } from "./tls.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
@@ -365,19 +363,11 @@ if (provider) {
 app.all("/mcp", ...mcpMiddleware, handleMcpRequest as express.RequestHandler);
 app.all("/", ...mcpMiddleware, handleMcpRequest as express.RequestHandler);
 
-// ---------------------------------------------------------------------------
-// Start.
-// Set USE_HTTPS=false to listen on plain HTTP — use this when TLS is
-// terminated upstream by a reverse proxy or tunnel (ngrok, Cloudflare, etc.).
-// Otherwise the built-in self-signed cert is used for direct HTTPS.
-// For production TLS set HTTPS_KEY_FILE and HTTPS_CERT_FILE to your PEM paths.
-// ---------------------------------------------------------------------------
-const useHttps = process.env.USE_HTTPS !== "false";
-
+// TLS is terminated by Azure App Service — the server always listens on plain HTTP.
 function startServer(): void {
   const base = serverUrl.href.replace(/\/$/, "");
   const onListen = () => {
-    console.error(`[teamviewer-mcp] Listening on port ${PORT} (${useHttps ? "HTTPS" : "HTTP"})`);
+    console.error(`[teamviewer-mcp] Listening on port ${PORT} (HTTP)`);
     console.error(`[teamviewer-mcp] MCP endpoint : ${base}/mcp`);
     if (provider) {
       const callbackDisplayUrl = tvCallbackUrl ?? `${base}/callback`;
@@ -386,12 +376,7 @@ function startServer(): void {
       console.error(`[teamviewer-mcp] OAuth callback (register with TeamViewer): ${callbackDisplayUrl}`);
     }
   };
-
-  if (useHttps) {
-    createHttpsServer(getTlsOptions(), app).listen(PORT, "0.0.0.0", onListen);
-  } else {
-    app.listen(PORT, "0.0.0.0", onListen);
-  }
+  app.listen(PORT, "0.0.0.0", onListen);
 }
 
 startServer();
