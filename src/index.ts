@@ -321,7 +321,7 @@ if (provider) {
   // before OAuth, letting Claude discover the server is reachable.
   const customBearerAuth: express.RequestHandler = async (req, res, next) => {
     const method = (req.body as Record<string, unknown>)?.method;
-    const unauthenticatedMethods = new Set(["initialize", "notifications/initialized"]);
+    const unauthenticatedMethods = new Set(["initialize", "notifications/initialized", "tools/list"]);
     if (req.method === "POST" && unauthenticatedMethods.has(method as string)) {
       return next();
     }
