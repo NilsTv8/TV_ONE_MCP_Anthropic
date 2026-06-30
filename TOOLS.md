@@ -1,4 +1,4 @@
-# TeamViewer MCP — Available Tools (120)
+# TeamViewer MCP — Available Tools (109)
 
 Base URL for all REST calls: `https://webapi.teamviewer.com/api/v1`
 
@@ -36,21 +36,6 @@ Base URL for all REST calls: `https://webapi.teamviewer.com/api/v1`
 | `tv_share_device_group` | Shares a device group with specified users. | `POST /groups/{group_id}/share_group` |
 | `tv_unshare_device_group` | Removes group sharing from users. | `POST /groups/{group_id}/unshare_group` |
 
-
-## Devices
-| Tool | Description | REST API |
-|---|---|---|
-| `tv_list_devices` | Lists all devices with optional filtering by group, online status, or alias. | `GET /devices` |
-| `tv_get_device` | Retrieves details of a specific device by ID. | `GET /devices/{device_id}` |
-| `tv_create_device` | Creates a new device entry. | `POST /devices` |
-| `tv_update_device` | Updates properties of an existing device. | `PUT /devices/{device_id}` |
-| `tv_delete_device` | Removes a device from the device list. | `DELETE /devices/{device_id}` |
-| `tv_assign_device` | Assigns a device to the current user account. | `POST /devices/assign` |
-| `tv_list_iot_sensors` | Lists all IoT sensors associated with a device. | `GET /devices/{device_id}/iot/sensors` |
-| `tv_create_iot_sensor` | Creates a new IoT sensor on a device. | `POST /devices/{device_id}/iot/sensors` |
-| `tv_get_iot_sensor` | Retrieves configuration for a specific IoT sensor. | `GET /devices/{device_id}/iot/sensors/{sensor_id}` |
-| `tv_update_iot_sensor` | Modifies settings of an IoT sensor. | `PUT /devices/{device_id}/iot/sensors/{sensor_id}` |
-| `tv_delete_iot_sensor` | Removes an IoT sensor from a device. | `DELETE /devices/{device_id}/iot/sensors/{sensor_id}` |
 
 ## Event Logging
 | Tool | Description | REST API |
