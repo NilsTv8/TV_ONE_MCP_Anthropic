@@ -173,5 +173,5 @@ Base URL for all REST calls: `https://webapi.teamviewer.com/api/v1`
 ## OAuth / Tokens
 | Tool | Description | REST API |
 |---|---|---|
-| `tv_oauth_create_permanent_token` | Creates a permanent (non-expiring) access token for the authenticated TeamViewer account. The returned token can be stored as `TEAMVIEWER_API_TOKEN` for use without OAuth. | `POST /OAuth2/accessToken` |
+| `tv_oauth_create_permanent_token` | Creates a permanent (non-expiring) access token for the authenticated TeamViewer account. | `POST /OAuth2/accessToken` |
 | `tv_oauth_delete_permanent_token` | Deletes the permanent access token associated with the current session. | `DELETE /OAuth2/accessToken` |
