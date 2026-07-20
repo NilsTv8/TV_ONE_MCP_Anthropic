@@ -14,6 +14,7 @@ import {
 
 import { TeamViewerClient } from "./client.js";
 import { TeamViewerOAuthProvider } from "./auth-provider.js";
+import { TokenStore, loadEncryptionKey } from "./token-store.js";
 
 import { accountTools, handleAccountTool } from "./tools/account.js";
 import { companyTools, handleCompanyTool } from "./tools/company.js";
@@ -162,7 +163,27 @@ const tvCallbackUrl = process.env.TEAMVIEWER_CALLBACK_URL;
 let provider: TeamViewerOAuthProvider | undefined;
 
 if (tvClientId && tvClientSecret) {
-  provider = new TeamViewerOAuthProvider(tvClientId, tvClientSecret, serverUrl, tvCallbackUrl);
+  const encryptionKeyRaw = process.env.TEAMVIEWER_TOKEN_ENCRYPTION_KEY;
+  if (!encryptionKeyRaw) {
+    console.error("[teamviewer-mcp] FATAL: TEAMVIEWER_TOKEN_ENCRYPTION_KEY is required when OAuth is configured.");
+    process.exit(1);
+  }
+  let encryptionKey: Buffer;
+  try {
+    encryptionKey = loadEncryptionKey(encryptionKeyRaw);
+  } catch (err) {
+    console.error(`[teamviewer-mcp] FATAL: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+  const tokenStore = new TokenStore(encryptionKey);
+  provider = new TeamViewerOAuthProvider(
+    tvClientId,
+    tvClientSecret,
+    serverUrl,
+    mcpResourceUrl.href,
+    tokenStore,
+    tvCallbackUrl
+  );
 
   app.use(
     mcpAuthRouter({
@@ -224,9 +245,9 @@ const transports = new Map<string, StreamableHTTPServerTransport>();
 async function handleMcpRequest(req: express.Request, res: express.Response): Promise<void> {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
-  // The bearer token is the TV access token, added by requireBearerAuth middleware.
-  const authToken = (req as express.Request & { auth?: { token: string } }).auth?.token;
-  const activeToken = authToken ?? "";
+  // The brokered TV access token, resolved server-side by customBearerAuth
+  // from the client's MCP token — the client's bearer is never used directly.
+  const activeToken = (req as express.Request & { tvToken?: string }).tvToken ?? "";
 
   // SSE stream reconnect
   if (req.method === "GET") {
@@ -331,7 +352,11 @@ if (provider) {
     const token = authHeader.slice(7);
     try {
       const authInfo = await provider!.verifyAccessToken(token);
-      (req as express.Request & { auth?: typeof authInfo }).auth = authInfo;
+      const subject = (authInfo.extra as { subject?: string } | undefined)?.subject;
+      if (!subject) throw new Error("Access token missing subject");
+      const tvToken = await provider!.resolveTeamViewerToken(subject);
+      (req as express.Request & { auth?: typeof authInfo; tvToken?: string }).auth = authInfo;
+      (req as express.Request & { tvToken?: string }).tvToken = tvToken;
       next();
     } catch {
       res.status(401)
