@@ -178,11 +178,3 @@ export class TokenStore {
     return this.mcpAccessTokens.get(hashToken(token))?.subject;
   }
 }
-
-export function loadEncryptionKey(base64Key: string): Buffer {
-  const key = Buffer.from(base64Key, "base64");
-  if (key.length !== 32) {
-    throw new Error("TEAMVIEWER_TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes (AES-256)");
-  }
-  return key;
-}

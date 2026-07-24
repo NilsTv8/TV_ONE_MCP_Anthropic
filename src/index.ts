@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import express from "express";
 import cors from "cors";
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
 import { AsyncLocalStorage } from "async_hooks";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -14,7 +14,7 @@ import {
 
 import { TeamViewerClient } from "./client.js";
 import { TeamViewerOAuthProvider } from "./auth-provider.js";
-import { TokenStore, loadEncryptionKey } from "./token-store.js";
+import { TokenStore } from "./token-store.js";
 
 import { accountTools, handleAccountTool } from "./tools/account.js";
 import { companyTools, handleCompanyTool } from "./tools/company.js";
@@ -163,19 +163,11 @@ const tvCallbackUrl = process.env.TEAMVIEWER_CALLBACK_URL;
 let provider: TeamViewerOAuthProvider | undefined;
 
 if (tvClientId && tvClientSecret) {
-  const encryptionKeyRaw = process.env.TEAMVIEWER_TOKEN_ENCRYPTION_KEY;
-  if (!encryptionKeyRaw) {
-    console.error("[teamviewer-mcp] FATAL: TEAMVIEWER_TOKEN_ENCRYPTION_KEY is required when OAuth is configured.");
-    process.exit(1);
-  }
-  let encryptionKey: Buffer;
-  try {
-    encryptionKey = loadEncryptionKey(encryptionKeyRaw);
-  } catch (err) {
-    console.error(`[teamviewer-mcp] FATAL: ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
-  }
-  const tokenStore = new TokenStore(encryptionKey);
+  // Generated fresh on every boot, held only in memory: the token store itself
+  // is in-memory only (BoundedMap), so nothing ever needs decrypting across a
+  // restart — a persisted key would only matter once TV grants are persisted
+  // to a shared backend, which isn't the case yet.
+  const tokenStore = new TokenStore(randomBytes(32));
   provider = new TeamViewerOAuthProvider(
     tvClientId,
     tvClientSecret,
