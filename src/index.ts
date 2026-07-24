@@ -13,7 +13,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { TeamViewerClient } from "./client.js";
-import { TeamViewerOAuthProvider } from "./auth-provider.js";
+import { TeamViewerOAuthProvider, UserFacingError } from "./auth-provider.js";
 import { TokenStore } from "./token-store.js";
 
 import { accountTools, handleAccountTool } from "./tools/account.js";
@@ -222,9 +222,13 @@ if (tvClientId && tvClientSecret) {
       const redirectUrl = await provider!.handleCallback(code, state);
       res.redirect(redirectUrl);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error("[teamviewer-mcp] OAuth callback error:", msg);
-      res.status(400).send(errorHtml(msg));
+      if (err instanceof UserFacingError) {
+        console.error("[teamviewer-mcp] OAuth callback error:", err.message);
+        res.status(err.status).send(errorHtml(err.message));
+      } else {
+        console.error("[teamviewer-mcp] OAuth callback error:", err);
+        res.status(500).send(errorHtml("An unexpected error occurred. Please try again."));
+      }
     }
   });
 }

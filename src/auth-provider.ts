@@ -38,6 +38,18 @@ interface PendingCode {
   codeChallenge: string;
 }
 
+/**
+ * Thrown for failures that are safe to display verbatim (already
+ * generic/curated text, no internal detail) with a specific HTTP status.
+ * Anything else thrown from handleCallback() is treated as unexpected and
+ * shown to the user as a fixed, generic message instead.
+ */
+export class UserFacingError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 interface TvTokenResponse {
   access_token: string;
   refresh_token?: string;
@@ -258,7 +270,7 @@ export class TeamViewerOAuthProvider implements OAuthServerProvider {
    */
   async handleCallback(tvCode: string, state: string): Promise<string> {
     const pending = this.pendingAuths.get(state);
-    if (!pending) throw new Error("Invalid or expired OAuth state parameter");
+    if (!pending) throw new UserFacingError("Invalid or expired OAuth state parameter", 400);
     this.pendingAuths.delete(state);
 
     const callbackUri = this.callbackUrl ?? new URL("/callback", this.issuerUrl).href;
@@ -278,7 +290,7 @@ export class TeamViewerOAuthProvider implements OAuthServerProvider {
     if (!resp.ok) {
       const errBody = await resp.text();
       console.error("[teamviewer-mcp] Token exchange failed:", resp.status, errBody);
-      throw new Error("Authorization failed. Please try again.");
+      throw new UserFacingError("Authorization failed. Please try again.", 502);
     }
 
     const token = await resp.json() as TvTokenResponse;
@@ -287,11 +299,13 @@ export class TeamViewerOAuthProvider implements OAuthServerProvider {
       headers: { Authorization: `Bearer ${token.access_token}` },
     });
     if (!accountResp.ok) {
-      throw new Error("Failed to resolve TeamViewer account for this session.");
+      const errBody = await accountResp.text();
+      console.error("[teamviewer-mcp] Account lookup failed:", accountResp.status, errBody);
+      throw new UserFacingError("Failed to resolve TeamViewer account for this session.", 502);
     }
     const account = await accountResp.json() as { userid?: string };
     const subject = account.userid;
-    if (!subject) throw new Error("TeamViewer account response missing userid.");
+    if (!subject) throw new UserFacingError("TeamViewer account response missing userid.", 502);
 
     this.tokenStore.saveTvGrant(subject, {
       accessToken: token.access_token,
