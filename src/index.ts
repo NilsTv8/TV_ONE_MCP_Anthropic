@@ -296,6 +296,8 @@ async function handleMcpRequest(req: express.Request, res: express.Response): Pr
 
 // Bearer auth guard — applied when OAuth is configured.
 // initialize is exempt so Claude can verify reachability before OAuth completes.
+// origin: "*" — acceptable for now (bearer token is the actual access control,
+// not CORS); to be reviewed by security at a later point in time.
 const mcpCors = cors({ origin: "*", allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id"] });
 
 // Normalize Accept header before the SDK sees it. The SDK checks literally for
