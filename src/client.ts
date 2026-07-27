@@ -44,14 +44,16 @@ export class TeamViewerClient {
     }
 
     if (!response.ok) {
-      let errorMessage = `TeamViewer API error: ${response.status} ${response.statusText}`;
-      try {
-        const errorBody = await response.text();
-        if (errorBody) errorMessage += ` — ${errorBody}`;
-      } catch {
-        // ignore
+      // The response body is attacker-influenceable (e.g. it can echo back
+      // values the caller submitted) and flows into the calling LLM's context
+      // as tool_result text — never forward it verbatim, that's a prompt
+      // injection vector. Log it server-side only; the thrown message stays
+      // bounded to the HTTP status, which we control.
+      const errorBody = await response.text().catch(() => "");
+      if (errorBody) {
+        console.error(`[teamviewer-mcp] TeamViewer API error ${response.status} ${method} ${path}:`, errorBody);
       }
-      throw new Error(errorMessage);
+      throw new Error(`TeamViewer API error: ${response.status} ${response.statusText}`);
     }
 
     const contentType = response.headers.get("content-type") ?? "";
