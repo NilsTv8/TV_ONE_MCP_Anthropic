@@ -1,370 +1,151 @@
-# TeamViewer MCP Server
+# TeamViewer MCP Server (DCR)
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that exposes the [TeamViewer Web API](https://webapi.teamviewer.com/api/v1/docs) as tools for AI assistants such as Claude.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that exposes the [TeamViewer Web API](https://webapi.teamviewer.com/api/v1/docs) as tools for AI assistants — Claude.ai and any other MCP client that supports Dynamic Client Registration (RFC 7591).
 
-## Features
+The server is an OAuth 2.0 **authorization server + resource server** that brokers access to TeamViewer. It never hands MCP clients a real TeamViewer token: it issues its own opaque, audience-bound tokens, holds TeamViewer credentials encrypted server-side, and resolves a live TeamViewer token internally on every tool call.
 
-125 tools across 15 functional groups:
+```
+MCP client (Claude.ai)
+    ↕ OAuth via /authorize, /token (this server)
+MCP server (this repo)
+    ↕ OAuth via account.teamviewer.com + webapi.teamviewer.com
+TeamViewer
+```
 
-| Group | Tools |
-|---|---|
-| Account | Get/update/create account, tenant IDs |
-| Company | Get/update company, license info |
-| Device Groups | CRUD, share/unshare |
-| Devices + IoT Sensors | CRUD devices, assign, full IoT sensor management |
-| Contacts | CRUD |
-| Event Logging | Query audit logs by date, type, email, session |
-| Managed Devices | List, update, delete, managers, groups, policy removal |
-| Managed Groups | CRUD, manager management |
-| Monitoring | Alarms, device hardware/software/system info, activation |
-| Policy Management | TeamViewer policies (CRUD), monitoring & patch management policies |
-| Connection Reports | List/get/delete reports, AI summary, chat & voice transcripts, screenshots |
-| Sessions | CRUD service case sessions |
-| User Management | CRUD users, TFA, effective permissions, role assignments |
-| User Roles + User Groups | Full role CRUD, assign/unassign to accounts & groups, user group management |
-| OAuth2 | Authorization code flow with PKCE, token refresh, permanent tokens |
+---
+
+## Two deployment variants
+
+This project ships as two parallel repos, because the target MCP clients speak OAuth client registration differently:
+
+| Variant | Repo | Use for |
+|---|---|---|
+| **DCR (this repo)** | `NilsTv8/TV_ONE_MCP_Anthropic` | Clients that support Dynamic Client Registration (e.g. Claude.ai connectors) |
+| **No-DCR** | `NilsTv8/TV_ONE_MCP_Anthropic_noDCR` | Clients that don't (e.g. Microsoft Copilot Studio / Power Platform) — accepts any `client_id`, validates `redirect_uri` against an allow-list instead |
+
+This repo requires clients to register via `POST /register` before calling `/authorize` — standard DCR, no manual client setup needed on the MCP side.
 
 ---
 
 ## Requirements
 
-- [Node.js](https://nodejs.org) 18 or later
-- A TeamViewer account
-- An OAuth2 app created in the [TeamViewer Developer Portal](https://login.teamviewer.com/nav#app/myapps)
+- [Node.js](https://nodejs.org) 22 or later
+- A TeamViewer account and an OAuth2 app registered in the [TeamViewer Management Console](https://login.teamviewer.com/nav#app/myapps) (Integrations → Apps)
+- A publicly reachable HTTPS URL for local testing (TeamViewer's OAuth redirect requires one) — e.g. [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) or [ngrok](https://ngrok.com)
 
 ---
 
-## Step 1 — Create an OAuth2 App
+## Setup
 
-Before running the server you must register an OAuth2 application in the TeamViewer Developer Portal. This provides the `client_id` and `client_secret` the server uses to exchange tokens on your behalf.
+### 1. Register a TeamViewer OAuth app
 
-1. Go to **[login.teamviewer.com/nav#app/myapps](https://login.teamviewer.com/nav#app/myapps)** and sign in.
-2. Click **Create app**.
-3. Fill in the required fields:
-   - **Name** — any descriptive name (e.g. `My MCP Server`)
-   - **Description** — optional
-   - **Redirect URI** — the URI TeamViewer will redirect to after the user authorizes. For local use `http://localhost` works (you only need to copy the `code` from the redirect URL — no server required). The authorization page opens as a popup.
-   - **Scopes** — select the permissions your app needs (see [Available Scopes](#available-scopes) below).
-4. Click **Save**. Copy the **Client ID** and **Client Secret** — you will need them in the next step.
+1. Go to **[login.teamviewer.com → Integrations → Apps](https://login.teamviewer.com/nav#app/myapps)** and sign in.
+2. Create an app and set its **Callback URL** to `{TEAMVIEWER_MCP_URL}/callback` (the public URL this server will run at, plus `/callback` — see Step 3).
+3. Copy the **Client ID** and **Client Secret**.
 
----
-
-## Step 2 — Install
+### 2. Install and build
 
 ```bash
-git clone https://github.com/NilsTv8/TV_MCP_public.git
-cd TV_MCP_public
+git clone https://github.com/NilsTv8/TV_ONE_MCP_Anthropic.git
+cd TV_ONE_MCP_Anthropic
 npm install
 npm run build
 ```
 
----
-
-## Step 3 — Configure Environment Variables
-
-The server reads credentials from environment variables. Set these in your MCP client configuration (see [MCP Client Setup](#mcp-client-setup)):
+### 3. Configure environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `TEAMVIEWER_CLIENT_ID` | Yes | OAuth2 client ID from the Developer Portal |
-| `TEAMVIEWER_CLIENT_SECRET` | Yes | OAuth2 client secret from the Developer Portal |
-| `TEAMVIEWER_REDIRECT_URI` | Yes | Redirect URI registered in the Developer Portal |
+| `TEAMVIEWER_CLIENT_ID` | Yes | TV OAuth app client ID (from Step 1) |
+| `TEAMVIEWER_CLIENT_SECRET` | Yes | TV OAuth app client secret |
+| `TEAMVIEWER_MCP_URL` | Yes | Public base URL of this server (no trailing slash) |
+| `TEAMVIEWER_CALLBACK_URL` | No | OAuth callback URL — defaults to `{TEAMVIEWER_MCP_URL}/callback` |
+| `PORT` | No | HTTP port (default `3000`) |
 
----
+No encryption-key variable is needed — TeamViewer tokens are encrypted server-side with a key generated fresh in memory on every boot (see [Security design](#security-design) below).
 
-## Step 4 — MCP Client Setup
-
-### Claude Desktop
-
-Add the following to your `claude_desktop_config.json`:
-
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`  
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "teamviewer": {
-      "command": "node",
-      "args": ["/absolute/path/to/TV_MCP_public/dist/index.js"],
-      "env": {
-        "TEAMVIEWER_CLIENT_ID": "your-client-id",
-        "TEAMVIEWER_CLIENT_SECRET": "your-client-secret",
-        "TEAMVIEWER_REDIRECT_URI": "http://localhost"
-      }
-    }
-  }
-}
-```
-
-Restart Claude Desktop after saving.
-
-### Claude Code (CLI)
+### 4. Run
 
 ```bash
-claude mcp add teamviewer \
-  -e TEAMVIEWER_CLIENT_ID=your-client-id \
-  -e TEAMVIEWER_CLIENT_SECRET=your-client-secret \
-  -e TEAMVIEWER_REDIRECT_URI=http://localhost \
-  -- node /absolute/path/to/TV_MCP_public/dist/index.js
+TEAMVIEWER_CLIENT_ID=<id> \
+TEAMVIEWER_CLIENT_SECRET=<secret> \
+TEAMVIEWER_MCP_URL=https://<your-public-domain> \
+PORT=3000 node dist/index.js
 ```
 
-### Other MCP Clients
+### 5. Connect an MCP client
 
-The server communicates over **stdio** and is compatible with any MCP-capable client. Pass the three environment variables when spawning the process.
+Point the client at `https://<your-public-domain>/mcp`. A DCR-capable client (like Claude.ai) will register itself automatically via `POST /register` and walk through the OAuth flow the first time it needs to call a tool — `tools/list` requires no authentication; only `tools/call` triggers the OAuth prompt.
 
 ---
 
-## Step 5 — Authenticate
+## OAuth endpoints (auto-served)
 
-Once the server is connected, run the OAuth flow from within your AI assistant:
-
-**1. Get the authorization URL**
-
-Call `tv_oauth_get_auth_url` (optionally pass a `scope`). The tool returns an `authorization_url`.
-
-**2. Open the URL in your browser**
-
-Log in to TeamViewer and click **Allow**. You will be redirected to your `TEAMVIEWER_REDIRECT_URI` with a `code` parameter in the URL, e.g.:
-
-```
-http://localhost/?code=ABC123XYZ&state=...
-```
-
-**3. Exchange the code**
-
-Call `tv_oauth_exchange_code` and pass the `code` value. The access token and refresh token are saved to `~/.teamviewer-mcp/tokens.json` (permissions `0600`). All subsequent API calls use this token automatically.
-
-**Check status at any time** with `tv_oauth_token_status`.
-
----
-
-## Authentication Reference
-
-| Tool | Description |
+| Endpoint | Purpose |
 |---|---|
-| `tv_oauth_get_auth_url` | Generates the authorization URL (PKCE) |
-| `tv_oauth_exchange_code` | Exchanges the auth code for tokens and saves them |
-| `tv_oauth_refresh_token` | Refreshes the access token using the stored refresh token |
-| `tv_oauth_revoke_token` | Revokes the active token and clears local storage |
-| `tv_oauth_create_permanent_token` | Creates a non-expiring permanent API token |
-| `tv_oauth_delete_permanent_token` | Deletes the permanent token |
-| `tv_oauth_token_status` | Shows current authentication state (source, expiry, scopes) |
-| `tv_oauth_clear_tokens` | Clears locally stored tokens (logout) |
+| `GET /.well-known/oauth-protected-resource` (and `/mcp` suffix) | RFC 9728 protected resource metadata |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 authorization server metadata |
+| `POST /register` | Dynamic Client Registration (RFC 7591) |
+| `GET /authorize` | Starts the OAuth flow → redirects to TeamViewer |
+| `POST /token` | Exchanges an authorization code or refresh token |
+| `POST /revoke` | Revokes a token |
+| `GET /callback` | TeamViewer redirects here after the user logs in |
 
 ---
 
-## Available Scopes
+## Available tools
 
-Select the scopes your app needs when creating it in the Developer Portal:
+27 action-based tools (each multi-action tool takes a single `action` parameter plus action-specific fields):
 
-| Scope | Access |
+| Group | Tools |
 |---|---|
-| `UserInfo.View` | Read account and user info |
-| `Computers.View` | Read device list |
-| `Computers.Edit` | Modify devices |
-| `SessionCode.Create` | Create service case sessions |
-| `Reports.View` | Read connection reports |
-| `ManagedGroups.View` | Read managed groups |
-| `ManagedGroups.Edit` | Modify managed groups |
-| `UserManagement.View` | Read users |
-| `UserManagement.Edit` | Create and modify users |
-| `EventLogging.View` | Read audit logs |
+| Account & Company | `tv_account`, `tv_company` |
+| Users & Access Management | `tv_users`, `tv_deactivate_user_tfa`, `tv_get_user_effective_permissions`, `tv_get_user_roles`, `tv_respond_to_join_company_request`, `tv_user_roles`, `tv_user_role_assignments`, `tv_user_groups`, `tv_user_group_members` |
+| Contacts | `tv_contacts` |
+| Devices & Device Groups | `tv_device_groups`, `tv_managed_devices`, `tv_managed_device_managers`, `tv_managed_groups`, `tv_managed_group_managers` |
+| Policies | `tv_teamviewer_policies`, `tv_monitoring_policies`, `tv_patch_policies` |
+| Monitoring | `tv_monitoring` |
+| Sessions & Remote Control | `tv_sessions`, `tv_connect_device` |
+| Reports & Event Logs | `tv_connection_reports`, `tv_list_device_reports`, `tv_get_event_logs` |
+| Tokens | `tv_tokens` (permanent, non-expiring TeamViewer API tokens — separate from this server's own OAuth tokens) |
 
-For full access during development you can select all scopes.
+Each tool's `description` (visible via `tools/list`) documents its exact `action` values and parameters.
+
+### Available scopes
+
+Requested during the OAuth flow; map to TeamViewer's own API permission scopes:
+
+`UserInfo.View` · `Computers.View` · `Computers.Edit` · `Computers.Delete` · `Groups.View` · `Groups.Create` · `Groups.Edit` · `Groups.Delete` · `Contacts.View` · `Contacts.Create` · `Contacts.Edit` · `Contacts.Delete` · `Partners.View` · `Sessions.ManualCreation`
 
 ---
 
-## Development
+## Docker
 
 ```bash
-# Run in development mode (no build step)
-TEAMVIEWER_CLIENT_ID=xxx TEAMVIEWER_CLIENT_SECRET=yyy TEAMVIEWER_REDIRECT_URI=http://localhost npm run dev
-
-# Rebuild after changes
-npm run build
+docker build -t teamviewer-mcp .
+docker run -p 3000:3000 \
+  -e TEAMVIEWER_CLIENT_ID=<id> \
+  -e TEAMVIEWER_CLIENT_SECRET=<secret> \
+  -e TEAMVIEWER_MCP_URL=https://<your-public-domain> \
+  teamviewer-mcp
 ```
+
+The image is a pinned, multi-stage, non-root build (compiles with dev dependencies in a `build` stage, ships only `dist/` and production dependencies in the `runtime` stage) with a container `HEALTHCHECK` against `/.well-known/oauth-authorization-server`.
+
+## Production
+
+Hosted on Azure App Service with this Docker image. Azure terminates TLS; the server always runs plain HTTP internally. Deploys automatically on every push to `master`.
 
 ---
 
-## Tool Reference
+## Security design
 
-### Account Management
-| Tool | Description |
-|---|---|
-| `tv_get_account` | Returns the account associated with the API token |
-| `tv_update_account` | Updates account settings |
-| `tv_create_account` | Creates a new account |
-| `tv_get_tenant_ids` | Retrieves tenant associations |
+- **No TeamViewer token pass-through** — this server issues its own opaque, audience-bound tokens; TeamViewer access/refresh tokens are held server-side, AES-256-GCM encrypted, and only ever resolved internally right before a WebAPI call.
+- **Refresh-token rotation with reuse detection** — replaying a consumed refresh token revokes the whole session.
+- **`redirect_uri` validated via Dynamic Client Registration** — the SDK checks it against what the client registered, with a direct (non-redirecting) rejection on mismatch.
+- **No raw upstream error text in tool results** — a failed TeamViewer API call is logged in full server-side; only the HTTP status is surfaced to the calling tool/LLM.
 
-### Company
-| Tool | Description |
-|---|---|
-| `tv_get_company` | Returns company details |
-| `tv_update_company` | Updates company information |
-| `tv_get_company_license` | Retrieves licensing data |
-
-### Device Groups
-| Tool | Description |
-|---|---|
-| `tv_list_device_groups` | Lists groups with optional name filter |
-| `tv_create_device_group` | Creates a new group |
-| `tv_get_device_group` | Returns a group by ID |
-| `tv_update_device_group` | Updates a group |
-| `tv_delete_device_group` | Deletes a group |
-| `tv_share_device_group` | Shares a group with users |
-| `tv_unshare_device_group` | Removes group sharing |
-
-### Devices
-| Tool | Description |
-|---|---|
-| `tv_list_devices` | Lists devices with optional filtering |
-| `tv_get_device` | Returns a device by ID |
-| `tv_create_device` | Adds a device to the list |
-| `tv_update_device` | Updates device properties |
-| `tv_delete_device` | Removes a device |
-| `tv_assign_device` | Assigns a device to the account |
-| `tv_list_iot_sensors` | Lists IoT sensors on a device |
-| `tv_create_iot_sensor` | Creates a new IoT sensor |
-| `tv_get_iot_sensor` | Returns a sensor by ID |
-| `tv_update_iot_sensor` | Updates sensor settings |
-| `tv_delete_iot_sensor` | Removes a sensor |
-
-### Contacts
-| Tool | Description |
-|---|---|
-| `tv_list_contacts` | Lists contacts |
-| `tv_get_contact` | Returns a contact by ID |
-| `tv_create_contact` | Sends a contact invite |
-| `tv_delete_contact` | Removes a contact |
-
-### Event Logging
-| Tool | Description |
-|---|---|
-| `tv_get_event_logs` | Queries audit logs by date range, event type, account email, or session |
-
-### Managed Devices
-| Tool | Description |
-|---|---|
-| `tv_list_managed_devices` | Lists directly managed devices |
-| `tv_list_company_managed_devices` | Lists company-managed devices |
-| `tv_get_managed_device_assignment_data` | Returns assignment data for onboarding |
-| `tv_get_managed_device` | Returns a managed device by ID |
-| `tv_update_managed_device` | Updates device name, policy, or group |
-| `tv_update_managed_device_description` | Updates device description |
-| `tv_delete_managed_device` | Removes management from a device |
-| `tv_remove_managed_device_policy` | Removes the assigned policy |
-| `tv_get_managed_device_groups` | Lists groups a device belongs to |
-| `tv_update_managed_device_groups` | Edits group membership |
-| `tv_list_managed_device_managers` | Lists managers of a device |
-| `tv_add_managed_device_managers` | Adds managers to a device |
-| `tv_remove_managed_device_manager` | Removes a manager from a device |
-
-### Managed Groups
-| Tool | Description |
-|---|---|
-| `tv_list_managed_groups` | Lists managed groups |
-| `tv_get_managed_group` | Returns a group by ID |
-| `tv_create_managed_group` | Creates a managed group |
-| `tv_update_managed_group` | Updates a group |
-| `tv_delete_managed_group` | Marks a group as deleted |
-| `tv_list_group_managers` | Lists managers of a group |
-| `tv_add_group_managers` | Adds managers to a group |
-| `tv_update_group_managers` | Updates manager permissions |
-| `tv_remove_group_managers` | Removes managers from a group |
-
-### Monitoring
-| Tool | Description |
-|---|---|
-| `tv_list_monitoring_alarms` | Lists alarms with optional filters |
-| `tv_list_monitoring_devices` | Lists monitored devices |
-| `tv_activate_monitoring` | Activates monitoring on a device |
-| `tv_get_device_hardware_info` | Returns hardware data (CPU, RAM, disk) |
-| `tv_get_device_system_info` | Returns OS and system information |
-| `tv_get_device_software_info` | Returns installed software |
-
-### Policy Management
-| Tool | Description |
-|---|---|
-| `tv_list_teamviewer_policies` | Lists TeamViewer configuration policies |
-| `tv_create_teamviewer_policy` | Creates a policy |
-| `tv_get_teamviewer_policy` | Returns a policy by ID |
-| `tv_update_teamviewer_policy` | Updates a policy |
-| `tv_delete_teamviewer_policy` | Deletes a policy |
-| `tv_list_monitoring_policies` | Lists monitoring policies |
-| `tv_get_monitoring_policy` | Returns a monitoring policy by ID |
-| `tv_assign_monitoring_policy` | Assigns monitoring policies to devices/groups |
-| `tv_list_patch_management_policies` | Lists patch management policies |
-| `tv_get_patch_management_policy` | Returns a patch policy by ID |
-| `tv_assign_patch_management_policy` | Assigns patch policies to devices/groups |
-
-### Connection Reports
-| Tool | Description |
-|---|---|
-| `tv_list_connection_reports` | Lists session reports (max 1000 per call) |
-| `tv_get_connection_report` | Returns a report by ID |
-| `tv_update_connection_report` | Updates report notes |
-| `tv_delete_connection_report` | Deletes a report |
-| `tv_get_connection_ai_summary` | Returns AI-generated session summary |
-| `tv_get_connection_chat_transcript` | Returns chat transcript |
-| `tv_get_connection_voice_transcript` | Returns voice call transcript |
-| `tv_list_connection_screenshots` | Lists available screenshots |
-| `tv_get_connection_screenshot` | Downloads a specific screenshot |
-| `tv_list_device_reports` | Lists device reports |
-
-### Sessions
-| Tool | Description |
-|---|---|
-| `tv_list_sessions` | Lists service case sessions |
-| `tv_get_session` | Returns a session by code |
-| `tv_create_session` | Creates a service case session |
-| `tv_update_session` | Updates a session |
-| `tv_delete_session` | Closes a session |
-
-### User Management
-| Tool | Description |
-|---|---|
-| `tv_list_users` | Lists users with optional filtering |
-| `tv_create_user` | Creates a user |
-| `tv_get_user` | Returns a user by ID |
-| `tv_update_user` | Updates user properties |
-| `tv_delete_user` | Deletes a user |
-| `tv_deactivate_user_tfa` | Deactivates two-factor authentication |
-| `tv_get_user_effective_permissions` | Returns consolidated permissions |
-| `tv_get_user_roles` | Returns roles assigned to a user |
-| `tv_respond_to_join_company_request` | Approves or rejects a join request |
-
-### User Roles
-| Tool | Description |
-|---|---|
-| `tv_list_user_roles` | Lists all user roles |
-| `tv_create_user_role` | Creates a role with permissions |
-| `tv_update_user_role` | Updates a role |
-| `tv_delete_user_role` | Deletes a role |
-| `tv_get_user_role_permissions` | Returns available permission definitions |
-| `tv_get_predefined_user_role` | Returns the predefined default role |
-| `tv_set_predefined_user_role` | Sets a role as the default |
-| `tv_clear_predefined_user_role` | Clears the default role |
-| `tv_assign_user_role_to_accounts` | Assigns a role to user accounts |
-| `tv_assign_user_role_to_usergroup` | Assigns a role to a user group |
-| `tv_unassign_user_role_from_accounts` | Removes a role from user accounts |
-| `tv_unassign_user_role_from_usergroup` | Removes a role from a user group |
-| `tv_get_user_role_account_assignments` | Lists accounts assigned to a role |
-| `tv_get_user_role_group_assignments` | Lists groups assigned to a role |
-
-### User Groups
-| Tool | Description |
-|---|---|
-| `tv_list_user_groups` | Lists all user groups |
-| `tv_create_user_group` | Creates a user group |
-| `tv_get_user_group` | Returns a group by ID |
-| `tv_update_user_group` | Updates a group name |
-| `tv_delete_user_group` | Removes a group |
-| `tv_list_user_group_members` | Lists group members |
-| `tv_add_user_group_members` | Adds users to a group |
-| `tv_remove_user_group_members` | Removes users from a group |
-| `tv_remove_user_group_member` | Removes a single user from a group |
-| `tv_get_user_group_role` | Returns the role assigned to a group |
+See `CLAUDE.md` in this repo for full architectural detail, local dev setup, and environment specifics.
 
 ---
 
