@@ -1,0 +1,1070 @@
+[
+  {
+    "name": "tv_account",
+    "description": "Manage the TeamViewer account associated with the API token.\n\naction values:\n  get             — get account details (no params)\n  update          — update account settings (optional: email, name, password)\n  create          — create a new account (required: email, password, name; optional: language)\n  get_tenant_ids  — get tenant associations (no params)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "get",
+            "update",
+            "create",
+            "get_tenant_ids"
+          ]
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "password": {
+          "type": "string",
+          "description": "Password"
+        },
+        "language": {
+          "type": "string",
+          "description": "Language code (e.g. 'en')"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_company",
+    "description": "Manage the company associated with the API token.\n\naction values:\n  get          — get company details (no params)\n  update       — update company info (optional: name, email)\n  get_license  — get company licensing data (no params)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "get",
+            "update",
+            "get_license"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "description": "Company name"
+        },
+        "email": {
+          "type": "string",
+          "description": "Company email"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_device_groups",
+    "description": "Manage TeamViewer device groups.\n\naction values:\n  list     — list groups (optional: name, shared, shouldMatchFullName)\n  get      — get a group (required: group_id)\n  create   — create a group (required: name)\n  update   — update a group (required: group_id; optional: name)\n  delete   — delete a group (required: group_id)\n  share    — share a group with users (required: group_id, users[])\n  unshare  — remove group sharing (required: group_id; optional: users[])",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "create",
+            "update",
+            "delete",
+            "share",
+            "unshare"
+          ]
+        },
+        "group_id": {
+          "type": "string",
+          "description": "Group ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Group name"
+        },
+        "shared": {
+          "type": "boolean",
+          "description": "Filter shared groups only (list)"
+        },
+        "shouldMatchFullName": {
+          "type": "boolean",
+          "description": "Exact name match (list)"
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Account IDs to share/unshare with"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_contacts",
+    "description": "Manage TeamViewer contacts.\n\naction values:\n  list    — list contacts (optional: online_state: Online|Busy|Away|Offline)\n  get     — get a contact (required: contact_id)\n  create  — invite a new contact (required: email; optional: groupid)\n  delete  — remove a contact (required: contact_id)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "create",
+            "delete"
+          ]
+        },
+        "contact_id": {
+          "type": "string",
+          "description": "Contact ID"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address (create)"
+        },
+        "groupid": {
+          "type": "string",
+          "description": "Group ID to assign contact to (create)"
+        },
+        "online_state": {
+          "type": "string",
+          "enum": [
+            "Online",
+            "Busy",
+            "Away",
+            "Offline"
+          ],
+          "description": "Filter by online state (list)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_get_event_logs",
+    "description": "Returns event/audit logs filtered by date range, event types, account emails, or session identifiers.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "start_date",
+        "end_date"
+      ],
+      "properties": {
+        "start_date": {
+          "type": "string",
+          "description": "Start date (ISO 8601, e.g. '2024-01-01T00:00:00Z')"
+        },
+        "end_date": {
+          "type": "string",
+          "description": "End date (ISO 8601)"
+        },
+        "event_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Filter by event names (e.g. ['EditTFAUsage', 'UserCreate'])"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Filter by event types (e.g. ['UserProfile', 'Session', 'Device'])"
+        },
+        "account_emails": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Filter by account email addresses"
+        },
+        "affected_item": {
+          "type": "string",
+          "description": "Filter by affected item"
+        },
+        "rc_session_guid": {
+          "type": "string",
+          "description": "Filter by remote control session GUID"
+        },
+        "continuation_token": {
+          "type": "string",
+          "description": "Pagination continuation token from a previous response"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_managed_devices",
+    "description": "Manage TeamViewer managed devices.\n\naction values:\n  list                  — list directly managed devices (optional: pagination_token)\n  list_company          — list company-managed devices (optional: pagination_token)\n  get                   — get a managed device (required: device_id)\n  get_assignment_data   — get assignment data for onboarding (no params)\n  update                — update a managed device (required: device_id; optional: name, teamviewerPolicyId, managedGroupId, permissionInheritanceType)\n  update_description    — update device description (required: device_id, description)\n  delete                — remove device management (required: device_id)\n  remove_policy         — remove assigned policy (required: device_id)\n  get_groups            — list managed groups the device belongs to (required: device_id)\n  update_groups         — edit device group memberships (required: device_id; optional: added_chain_ids[], removed_chain_ids[])",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "list_company",
+            "get",
+            "get_assignment_data",
+            "update",
+            "update_description",
+            "delete",
+            "remove_policy",
+            "get_groups",
+            "update_groups"
+          ]
+        },
+        "device_id": {
+          "type": "string",
+          "description": "Managed device ID (UUID)"
+        },
+        "pagination_token": {
+          "type": "string",
+          "description": "Pagination token"
+        },
+        "name": {
+          "type": "string",
+          "description": "Device name (update)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Device description (update_description)"
+        },
+        "teamviewerPolicyId": {
+          "type": "string",
+          "description": "Policy ID to assign (update)"
+        },
+        "managedGroupId": {
+          "type": "string",
+          "description": "Group ID to assign to (update)"
+        },
+        "permissionInheritanceType": {
+          "type": "number",
+          "description": "0 = inherit from group, 1 = no inheritance (update)"
+        },
+        "added_chain_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Group chain IDs to add (update_groups)"
+        },
+        "removed_chain_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Group chain IDs to remove (update_groups)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_managed_device_managers",
+    "description": "Manage direct managers of a managed device.\n\naction values:\n  list    — list managers of a device (required: device_id)\n  add     — add managers to a device (required: device_id, managers[])\n  remove  — remove a manager from a device (required: device_id, manager_id)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action",
+        "device_id"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "add",
+            "remove"
+          ]
+        },
+        "device_id": {
+          "type": "string",
+          "description": "Managed device ID (UUID)"
+        },
+        "manager_id": {
+          "type": "string",
+          "description": "Manager account ID to remove (remove)"
+        },
+        "managers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "description": "Managers to add with their permissions (add)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_managed_groups",
+    "description": "Manage TeamViewer managed device groups.\n\naction values:\n  list    — list managed groups (optional: limit, offset)\n  get     — get a group (required: group_id)\n  create  — create a group (required: name; optional: policy_id)\n  update  — update a group (required: group_id; optional: name, policy_id)\n  delete  — delete a group (required: group_id)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "create",
+            "update",
+            "delete"
+          ]
+        },
+        "group_id": {
+          "type": "string",
+          "description": "Managed group ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Group name"
+        },
+        "policy_id": {
+          "type": "string",
+          "description": "Policy ID to assign"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max results (list)"
+        },
+        "offset": {
+          "type": "number",
+          "description": "Pagination offset (list)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_managed_group_managers",
+    "description": "Manage managers assigned to a managed group.\n\naction values:\n  list    — list managers (required: group_id)\n  add     — add managers (required: group_id; optional: account_ids[], permissions[])\n  update  — update manager permissions (required: group_id; optional: account_ids[], permissions[])\n  remove  — remove managers (required: group_id, account_ids[])",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action",
+        "group_id"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "add",
+            "update",
+            "remove"
+          ]
+        },
+        "group_id": {
+          "type": "string",
+          "description": "Managed group ID"
+        },
+        "account_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Account IDs"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Permissions to grant/update"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_monitoring",
+    "description": "Manage TeamViewer monitoring and device information.\n\naction values:\n  list_alarms      — list monitoring alarms (optional: status, device_id, group_id, start_date, end_date, continuation_token)\n  list_devices     — list devices with monitoring enabled (no params)\n  activate         — activate monitoring on a device (required: teamviewer_id; optional: monitoring_policy_id, patch_management_policy_id)\n  get_hardware     — get hardware info for a monitored device (required: device_id)\n  get_system_info  — get OS/hostname info for a monitored device (required: device_id)\n  get_software     — get installed software for a monitored device (required: device_id)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list_alarms",
+            "list_devices",
+            "activate",
+            "get_hardware",
+            "get_system_info",
+            "get_software"
+          ]
+        },
+        "device_id": {
+          "type": "string",
+          "description": "Device ID (UUID) — get_hardware, get_system_info, get_software"
+        },
+        "teamviewer_id": {
+          "type": "number",
+          "description": "TeamViewer numeric device ID — activate"
+        },
+        "monitoring_policy_id": {
+          "type": "string",
+          "description": "Monitoring policy ID — activate"
+        },
+        "patch_management_policy_id": {
+          "type": "string",
+          "description": "Patch management policy ID — activate"
+        },
+        "status": {
+          "type": "string",
+          "description": "Alarm status filter (list_alarms)"
+        },
+        "group_id": {
+          "type": "string",
+          "description": "Group ID filter (list_alarms)"
+        },
+        "start_date": {
+          "type": "string",
+          "description": "ISO 8601 start date (list_alarms)"
+        },
+        "end_date": {
+          "type": "string",
+          "description": "ISO 8601 end date (list_alarms)"
+        },
+        "continuation_token": {
+          "type": "string",
+          "description": "Pagination token (list_alarms)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_teamviewer_policies",
+    "description": "Manage TeamViewer configuration policies.\n\naction values:\n  list    — list all policies (no params)\n  get     — get a policy (required: policy_id)\n  create  — create a policy (required: name; optional: settings[], default)\n  update  — update a policy (required: policy_id; optional: name, settings[], default)\n  delete  — delete a policy (required: policy_id)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "create",
+            "update",
+            "delete"
+          ]
+        },
+        "policy_id": {
+          "type": "string",
+          "description": "Policy ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Policy name"
+        },
+        "settings": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Policy setting objects"
+        },
+        "default": {
+          "type": "boolean",
+          "description": "Set as default policy"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_monitoring_policies",
+    "description": "Manage monitoring policies.\n\naction values:\n  list    — list monitoring policies (no params)\n  get     — get a monitoring policy (required: policy_id)\n  assign  — assign policies to devices/groups (required: assignments[])",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "assign"
+          ]
+        },
+        "policy_id": {
+          "type": "string",
+          "description": "Monitoring policy ID"
+        },
+        "assignments": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Assignment objects (assign)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_patch_policies",
+    "description": "Manage patch management policies.\n\naction values:\n  list    — list patch management policies (no params)\n  get     — get a patch management policy (required: policy_id)\n  assign  — assign policies to devices/groups (required: assignments[])",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "assign"
+          ]
+        },
+        "policy_id": {
+          "type": "string",
+          "description": "Patch management policy ID"
+        },
+        "assignments": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Assignment objects (assign)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_connection_reports",
+    "description": "Manage TeamViewer connection reports and media.\n\naction values:\n  list                  — list connection reports (optional: userid, groupid, deviceid, from_date, to_date, limit, offset)\n  get                   — get a report (required: connection_id)\n  update                — update report notes (required: connection_id; optional: notes)\n  delete                — delete a report (required: connection_id)\n  get_ai_summary        — get AI summary for a connection (required: connection_id)\n  get_chat_transcript   — get chat transcript (required: connection_id)\n  get_voice_transcript  — get voice transcript (required: connection_id)\n  list_screenshots      — list screenshots (required: connection_id)\n  get_screenshot        — download a screenshot (required: connection_id, screenshot_id)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "update",
+            "delete",
+            "get_ai_summary",
+            "get_chat_transcript",
+            "get_voice_transcript",
+            "list_screenshots",
+            "get_screenshot"
+          ]
+        },
+        "connection_id": {
+          "type": "string",
+          "description": "Connection report ID"
+        },
+        "screenshot_id": {
+          "type": "string",
+          "description": "Screenshot ID (get_screenshot)"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Notes to update (update)"
+        },
+        "userid": {
+          "type": "string",
+          "description": "Filter by user ID (list)"
+        },
+        "groupid": {
+          "type": "string",
+          "description": "Filter by group ID (list)"
+        },
+        "deviceid": {
+          "type": "string",
+          "description": "Filter by device ID (list)"
+        },
+        "from_date": {
+          "type": "string",
+          "description": "Start date ISO 8601 (list)"
+        },
+        "to_date": {
+          "type": "string",
+          "description": "End date ISO 8601 (list)"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max results up to 1000 (list)"
+        },
+        "offset": {
+          "type": "number",
+          "description": "Pagination offset (list)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_list_device_reports",
+    "description": "Retrieves device inventory/activity reports.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "from_date": {
+          "type": "string",
+          "description": "Start date (ISO 8601)"
+        },
+        "to_date": {
+          "type": "string",
+          "description": "End date (ISO 8601)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_sessions",
+    "description": "Manage TeamViewer service case sessions.\n\naction values:\n  list    — list sessions (optional: state: open|closed, tag)\n  get     — get a session (required: session_code)\n  create  — create a session (optional: description, end_customer, tag, notes, supporter_name)\n  update  — update a session (required: session_code; optional: description, tag, notes)\n  delete  — close/terminate a session (required: session_code)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "create",
+            "update",
+            "delete"
+          ]
+        },
+        "session_code": {
+          "type": "string",
+          "description": "Session code"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "open",
+            "closed"
+          ],
+          "description": "Filter by state (list)"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Session tag"
+        },
+        "description": {
+          "type": "string",
+          "description": "Session description"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Internal notes"
+        },
+        "supporter_name": {
+          "type": "string",
+          "description": "Supporter name (create)"
+        },
+        "end_customer": {
+          "type": "object",
+          "description": "End customer info (create)",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_users",
+    "description": "Manage TeamViewer company users.\n\naction values:\n  list    — list users (optional: email, name, permissions, full_list)\n  get     — get a user (required: user_id)\n  create  — create a user (required: email, name, language; optional: password, userRoleId, license_key, log_sessions, show_comment_window, tfa_enforcement)\n  update  — update a user (required: user_id; optional: email, name, password, active, AssignUserRoleIds[], UnassignUserRoleIds[], log_sessions, show_comment_window, tfa_enforcement, license_key)\n  delete  — delete a user (required: user_id; optional: is_permanent_delete)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "create",
+            "update",
+            "delete"
+          ]
+        },
+        "user_id": {
+          "type": "string",
+          "description": "User ID (e.g. 'u123456')"
+        },
+        "email": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "description": "Language code (e.g. 'en')"
+        },
+        "password": {
+          "type": "string"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Activate or deactivate user (update)"
+        },
+        "permissions": {
+          "type": "string",
+          "description": "Filter by permission (list)"
+        },
+        "full_list": {
+          "type": "boolean",
+          "description": "Include deactivated users (list)"
+        },
+        "is_permanent_delete": {
+          "type": "boolean",
+          "description": "Permanently delete vs deactivate (delete)"
+        },
+        "userRoleId": {
+          "type": "string",
+          "description": "Role ID to assign (create)"
+        },
+        "AssignUserRoleIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Role IDs to assign (update)"
+        },
+        "UnassignUserRoleIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Role IDs to unassign (update)"
+        },
+        "license_key": {
+          "type": "string"
+        },
+        "log_sessions": {
+          "type": "boolean"
+        },
+        "show_comment_window": {
+          "type": "boolean"
+        },
+        "tfa_enforcement": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_deactivate_user_tfa",
+    "description": "Deactivates two-factor authentication for a user.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "user_id"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "description": "User ID"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_get_user_effective_permissions",
+    "description": "Returns the consolidated permissions from all roles assigned to the current user.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "tv_get_user_roles",
+    "description": "Returns the roles assigned to a specific user.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "user_id"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "description": "User ID"
+        },
+        "pagination_token": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_respond_to_join_company_request",
+    "description": "Approves or rejects a user's request to join the company.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "user_id",
+        "approve"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "approve": {
+          "type": "boolean",
+          "description": "true to approve, false to reject"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_user_roles",
+    "description": "Manage company user roles and the predefined default role.\n\naction values:\n  list               — list all roles (no params)\n  get_permissions    — list available permission definitions (no params)\n  create             — create a role (required: name, permissions[])\n  update             — update a role (required: user_role_id, name, permissions[])\n  delete             — delete a role (required: user_role_id)\n  get_predefined     — get the predefined default role (no params)\n  set_predefined     — set the predefined role (required: user_role_id)\n  clear_predefined   — clear the predefined role (no params)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get_permissions",
+            "create",
+            "update",
+            "delete",
+            "get_predefined",
+            "set_predefined",
+            "clear_predefined"
+          ]
+        },
+        "user_role_id": {
+          "type": "string",
+          "description": "User role ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Role name"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Permission strings"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_user_role_assignments",
+    "description": "Assign and unassign user roles to accounts and user groups, and query assignments.\n\naction values:\n  assign_to_accounts       — assign a role to accounts (required: user_role_id, user_ids[])\n  assign_to_group          — assign a role to a user group (required: user_role_id, user_group_id)\n  unassign_from_accounts   — unassign a role from accounts (required: user_role_id, user_ids[])\n  unassign_from_group      — unassign a role from a user group (required: user_role_id, user_group_id)\n  get_account_assignments  — get accounts assigned to a role (required: user_role_id; optional: continuation_token)\n  get_group_assignments    — get user groups assigned to a role (required: user_role_id; optional: continuation_token)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action",
+        "user_role_id"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "assign_to_accounts",
+            "assign_to_group",
+            "unassign_from_accounts",
+            "unassign_from_group",
+            "get_account_assignments",
+            "get_group_assignments"
+          ]
+        },
+        "user_role_id": {
+          "type": "string",
+          "description": "User role ID"
+        },
+        "user_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Account IDs"
+        },
+        "user_group_id": {
+          "type": "number",
+          "description": "User group ID"
+        },
+        "continuation_token": {
+          "type": "string",
+          "description": "Pagination token"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_user_groups",
+    "description": "Manage user groups.\n\naction values:\n  list      — list all user groups (optional: pagination_token, limit)\n  get       — get a user group (required: group_id)\n  create    — create a user group (required: name)\n  update    — update a user group name (required: group_id, name)\n  delete    — delete a user group (required: group_id)\n  get_role  — get the role assigned to a user group (required: group_id)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "create",
+            "update",
+            "delete",
+            "get_role"
+          ]
+        },
+        "group_id": {
+          "type": "string",
+          "description": "User group ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "User group display name"
+        },
+        "pagination_token": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_user_group_members",
+    "description": "Manage members of a user group.\n\naction values:\n  list        — list members (required: group_id; optional: pagination_token, limit)\n  add         — add members (required: group_id, account_ids[])\n  remove      — remove multiple members (required: group_id, account_ids[])\n  remove_one  — remove a single member (required: group_id, account_id)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action",
+        "group_id"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "add",
+            "remove",
+            "remove_one"
+          ]
+        },
+        "group_id": {
+          "type": "string",
+          "description": "User group ID"
+        },
+        "account_id": {
+          "type": "string",
+          "description": "Single account ID (remove_one)"
+        },
+        "account_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Account IDs (add, remove)"
+        },
+        "pagination_token": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_tokens",
+    "description": "Manage permanent (non-expiring) TeamViewer API tokens.\n\naction values:\n  create  — create a permanent token (required: name 5–20 chars; optional: scope)\n  delete  — delete the permanent token for the current session (no params)",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "create",
+            "delete"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "description": "Token name (5–20 characters)"
+        },
+        "scope": {
+          "type": "string",
+          "description": "Comma-separated scopes (optional)"
+        }
+      }
+    }
+  },
+  {
+    "name": "tv_connect_device",
+    "description": "Returns the TeamViewer remote control link for a device. The teamviewer_id is the numeric TV ID visible on the managed device (e.g. from tv_list_managed_devices or tv_get_managed_device). The caller is responsible for opening the link on the user's own machine to launch the TeamViewer desktop app.",
+    "inputSchema": {
+      "type": "object",
+      "required": [
+        "teamviewer_id"
+      ],
+      "properties": {
+        "teamviewer_id": {
+          "type": "string",
+          "description": "The TeamViewer ID of the remote device (numeric, e.g. '123456789')"
+        }
+      }
+    }
+  }
+]
