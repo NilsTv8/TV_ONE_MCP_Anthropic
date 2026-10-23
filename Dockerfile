@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ########## build stage ##########
-FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS build
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci                       # reproducible, incl. dev deps for tsc
@@ -10,7 +10,7 @@ COPY src ./src
 RUN npm run build                # -> dist/
 
 ########## runtime stage ##########
-FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runtime
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
