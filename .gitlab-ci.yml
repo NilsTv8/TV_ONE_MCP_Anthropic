@@ -1,0 +1,9 @@
+stages:
+  - scan_code
+
+include:
+  # Semgrep SAST + SCA (dependency scan).
+  # SCA uses the committed package-lock.json to resolve the transitive tree.
+  - component: "$CI_SERVER_FQDN/product-security/devsecops-components/scan_code@v1.8.3"
+    inputs:
+      project_name: "mcp_webapi_hosted"
