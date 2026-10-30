@@ -24,7 +24,7 @@ TeamViewer
 ```
 
 MCP endpoint: `POST /mcp`  
-Tools listing requires no auth; tool execution requires a valid TV bearer token.
+Tools listing and tool execution both require a valid bearer token.
 
 ## Environment Variables
 
@@ -83,7 +83,7 @@ Callback URL to register: `{TEAMVIEWER_MCP_URL}/callback`
 
 - **No server-side TLS** — Azure App Service provides HTTPS termination
 - **`trust proxy loopback`** — ngrok sends `X-Forwarded-For` from 127.0.0.1
-- **`tools/list` unauthenticated** — only `tools/call` requires a bearer token
+- **`tools/list` and `tools/call` authenticated** — other methods (e.g. `initialize`, `ping`) need no token
 - **5-min token cache** — `verifyAccessToken` caches TV API responses to reduce latency
 - **BoundedMap** — all in-memory stores are capped to prevent unbounded growth
 - **`display=popup`** on TV authorize URL — opens login in a popup rather than full redirect

@@ -75,7 +75,7 @@ PORT=3000 node dist/index.js
 
 ### 5. Connect an MCP client
 
-Point the client at `https://<your-public-domain>/mcp`. A DCR-capable client (like Claude.ai) will register itself automatically via `POST /register` and walk through the OAuth flow the first time it needs to call a tool — `tools/list` requires no authentication; only `tools/call` triggers the OAuth prompt.
+Point the client at `https://<your-public-domain>/mcp`. A DCR-capable client (like Claude.ai) will register itself automatically via `POST /register` and walk through the OAuth flow the first time it needs to list or call tools — `tools/list` and `tools/call` both require authentication.
 
 ---
 

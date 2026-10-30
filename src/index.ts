@@ -325,12 +325,11 @@ if (provider) {
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(mcpResourceUrl);
 
   // RFC 6750 §3.1 compliant bearer auth:
-  // Only tools/call requires authentication — all other methods (initialize,
-  // tools/list, ping, etc.) are allowed through so OAuth is only triggered
-  // when a tool is actually invoked, not at connection time.
+  // tools/list and tools/call require authentication — other methods
+  // (initialize, ping, etc.) are allowed through so clients can connect first.
   const customBearerAuth: express.RequestHandler = async (req, res, next) => {
     const method = (req.body as Record<string, unknown>)?.method;
-    if (req.method !== "POST" || method !== "tools/call") {
+    if (req.method !== "POST" || (method !== "tools/call" && method !== "tools/list")) {
       return next();
     }
 
